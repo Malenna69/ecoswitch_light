@@ -1,0 +1,9 @@
+streamlit==1.36.0
+plotly==5.22.0
+requests>=2.31.0
+numpy>=2.0.0
+pandas==2.2.2
+qrcode[pil]==7.4.2
+flask==3.0.2
+flask-cors==4.0.0
+pvlib==0.10.4; python_version < "3.13"
