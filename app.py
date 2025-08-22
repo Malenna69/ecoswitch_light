@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# EcoSwitch — Démo v11.4r (UI Streamlit)
+# EcoSwitch — Démo v11.4r (UI Streamlit) — patch Streamlit Cloud
 
 import os, io, sys, json, zipfile, hashlib
 from pathlib import Path
@@ -13,62 +13,48 @@ st.set_page_config(page_title="EcoSwitch — Démo v11.4r", page_icon="🌿", la
 
 # Fonts + Theme CSS
 st.markdown('<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">', unsafe_allow_html=True)
-THEME_CSS = (Path(__file__).parent / "assets" / "theme.css")
+
+# 🔧 TROUVE LE BON "PROJECT ROOT" (que app.py soit à la racine ou dans ui/)
+HERE = Path(__file__).parent
+
+def _find_project_root() -> Path:
+    cands = [HERE, HERE.parent]
+    for c in cands:
+        if (c / "requirements.txt").exists() or (c / "modules").exists() or (c / "data").exists():
+            return c
+    return HERE
+
+PROJECT = _find_project_root()
+
+# Thème + logo (facultatif)
+ASSETS = PROJECT / "assets"
+THEME_CSS = ASSETS / "theme.css"
 if THEME_CSS.exists():
     st.markdown(f"<style>{THEME_CSS.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+if (ASSETS / "logo.svg").exists():
+    st.image(str(ASSETS / "logo.svg"), width=28)
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
+# 📁 Dossiers de données (toujours créés dans le repo)
+DATA_DIR = PROJECT / "data"
 METEO_DIR = DATA_DIR / "meteo"
 TARIFS_DIR = DATA_DIR / "tarifs"
 for d in (METEO_DIR, TARIFS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-def _sha8(p: Path) -> str:
-    try:
-        return hashlib.sha256(p.read_bytes()).hexdigest()[:8]
-    except Exception:
-        return "—"
-
-def _file_exists(path: Path) -> bool:
-    try:
-        return path.exists() and path.is_file()
-    except Exception:
-        return False
-
-def _badge_sources():
-    badges = []
-    tempo = TARIFS_DIR / "tempo_2025.csv"
-    trv   = TARIFS_DIR / "retail_trv.csv"
-    ember = TARIFS_DIR / "elec_spot_2025.csv"
-    if _file_exists(tempo):
-        badges.append(f"<span class='eos-badge' title='hash {_sha8(tempo)}'>Tempo 2025</span>")
-    if _file_exists(trv):
-        badges.append(f"<span class='eos-badge' title='hash {_sha8(trv)}'>TRV</span>")
-    if _file_exists(ember):
-        badges.append(f"<span class='eos-badge' title='hash {_sha8(ember)}'>Ember FR 2025</span>")
-    if not badges:
-        badges.append("<span class='eos-badge eos-badge--warn'>Fallback tarifs</span>")
-    st.markdown(
-        """
-        <style>
-        .eos-badges{display:flex;gap:.5rem;flex-wrap:wrap;margin:8px 0 0}
-        .eos-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .55rem;border-radius:999px;font-size:.80rem;color:#065f46;background:#d1fae5;border:1px solid #a7f3d0}
-        .eos-badge--warn{color:#92400e;background:#fef3c7;border-color:#fde68a}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(f"<div class='eos-badges'>{''.join(badges)}</div>", unsafe_allow_html=True)
-
-# Import core module
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# ✅ Import du moteur : modules/ prioritaire, sinon core.py (secours)
+if str(PROJECT) not in sys.path:
+    sys.path.insert(0, str(PROJECT))
 try:
     from modules import Audit, simulate, load_meteo, log_run
-except Exception as e:
-    st.error(f"Impossible d'importer `modules` depuis {ROOT}. Vérifie que `modules/` est à la racine. Détail: {e}")
-    st.stop()
+except Exception:
+    try:
+        from core import Audit, simulate, load_meteo, log_run
+    except Exception as e:
+        st.error("Moteur introuvable. Crée soit `modules/__init__.py` (qui fait `from core import *`), soit place `core.py` à la racine.")
+        st.stop()
+
+# (le reste de ton fichier inchangé à partir d’ici)
+
 
 # Header
 colH1, colH2 = st.columns([3, 1])
