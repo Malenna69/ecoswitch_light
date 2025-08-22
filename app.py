@@ -14,19 +14,17 @@ st.set_page_config(page_title="EcoSwitch — Démo v11.4r", page_icon="🌿", la
 # Fonts + Theme CSS
 st.markdown('<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">', unsafe_allow_html=True)
 
-# 🔧 TROUVE LE BON "PROJECT ROOT" (que app.py soit à la racine ou dans ui/)
+# 🔧 Trouver le "project root" (que app.py soit à la racine OU dans ui/)
 HERE = Path(__file__).parent
-
 def _find_project_root() -> Path:
     cands = [HERE, HERE.parent]
     for c in cands:
         if (c / "requirements.txt").exists() or (c / "modules").exists() or (c / "data").exists():
             return c
     return HERE
-
 PROJECT = _find_project_root()
 
-# Thème + logo (facultatif)
+# Thème + logo (facultatifs)
 ASSETS = PROJECT / "assets"
 THEME_CSS = ASSETS / "theme.css"
 if THEME_CSS.exists():
@@ -49,20 +47,55 @@ try:
 except Exception:
     try:
         from core import Audit, simulate, load_meteo, log_run
-    except Exception as e:
-        st.error("Moteur introuvable. Crée soit `modules/__init__.py` (qui fait `from core import *`), soit place `core.py` à la racine.")
+    except Exception:
+        st.error("Moteur introuvable. Crée `modules/__init__.py` (avec `from core import *`) ou place `core.py` à la racine.")
         st.stop()
 
-# (le reste de ton fichier inchangé à partir d’ici)
+# --------- Helpers manquants (badges sources + utilitaires) ----------
+def _sha8(p: Path) -> str:
+    try:
+        return hashlib.sha256(p.read_bytes()).hexdigest()[:8]
+    except Exception:
+        return "—"
 
+def _file_exists(path: Path) -> bool:
+    try:
+        return path.exists() and path.is_file()
+    except Exception:
+        return False
 
-# Header
+def _badge_sources():
+    tempo = TARIFS_DIR / "tempo_2025.csv"
+    trv   = TARIFS_DIR / "retail_trv.csv"
+    ember = TARIFS_DIR / "elec_spot_2025.csv"
+    badges = []
+    if _file_exists(tempo):
+        badges.append(f"<span class='eos-badge' title='hash {_sha8(tempo)}'>Tempo 2025</span>")
+    if _file_exists(trv):
+        badges.append(f"<span class='eos-badge' title='hash {_sha8(trv)}'>TRV</span>")
+    if _file_exists(ember):
+        badges.append(f"<span class='eos-badge' title='hash {_sha8(ember)}'>Ember FR 2025</span>")
+    if not badges:
+        badges.append("<span class='eos-badge eos-badge--warn'>Fallback tarifs</span>")
+    st.markdown(
+        """
+        <style>
+        .eos-badges{display:flex;gap:.5rem;flex-wrap:wrap;margin:8px 0 0}
+        .eos-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .55rem;border-radius:999px;font-size:.80rem;color:#065f46;background:#d1fae5;border:1px solid #a7f3d0}
+        .eos-badge--warn{color:#92400e;background:#fef3c7;border-color:#fde68a}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(f"<div class='eos-badges'>{''.join(badges)}</div>", unsafe_allow_html=True)
+
+# ----------------------------- Header -----------------------------
 colH1, colH2 = st.columns([3, 1])
 with colH1:
+    # (on retire l'<img app://...> qui ne marche pas en cloud ; le logo est déjà affiché via st.image ci-dessus)
     st.markdown(
         """
         <div style="display:flex;align-items:center;gap:.75rem">
-          <img src="app://local/ui/assets/logo.svg" width="28" height="28" alt="EcoSwitch logo"/>
           <div>
             <h1 style="margin:0">EcoSwitch — Démo PAC & Hybride</h1>
             <div style="opacity:.75">Alignée landing • typographie Inter • palette verts/bleus</div>
@@ -90,16 +123,17 @@ if _dark:
             --eco:#22c55e; --blue:#3b82f6; --ring:rgba(34,197,94,.25)
           }
           html,body{background:var(--bg)!important;color:var(--ink)}
-          .stApp header, .st-emotion-cache-18ni7ap{background:var(--bg)!important}
+          .stApp header{background:var(--bg)!important}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 st.info("Démo indicative • ISO/EN simplifié • Incertitude ±15% • Wholesale (≈0,07 €/kWh) ≠ Retail (≈0,16–0,21 €/kWh).", icon="ℹ️")
+_ badge_sources = _badge_sources  # alias if you referenced old name elsewhere
 _badge_sources()
 
-# Sidebar inputs
+# ----------------------------- Entrées -----------------------------
 with st.sidebar:
     st.header("Profil logement")
     zone = st.selectbox("Zone climatique", ["H1", "H2", "H3"], index=1)
@@ -125,10 +159,12 @@ with st.sidebar:
     capex_hybr = st.number_input("CAPEX Hybride (€)", min_value=0, value=15000, step=500)
     sans_aides = st.checkbox("Afficher ROI **sans** aides", value=False)
 
-# Importers
+# ----------------------------- Importers -----------------------------
 with st.expander("Importer des données (EPW / Tarifs)"):
     st.caption("Charge EPW/ZIP OneBuilding et CSV pour tarifs (Ember EUR/MWh ou TRV base/hp/hc).")
     col_epw, col_tar = st.columns(2)
+
+    # EPW
     with col_epw:
         st.subheader("EPW (météo)")
         zone_choice = st.selectbox("Associer à la zone", ["H1 (Paris-Orly)", "H2 (Lyon-Bron)", "H3 (Marseille-Marignane)"], index=1, key="epw_zone_sel")
@@ -183,9 +219,10 @@ with st.expander("Importer des données (EPW / Tarifs)"):
             except Exception as e:
                 st.error(f"Échec téléchargement EPW: {e}")
 
+    # Tarifs
     with col_tar:
         st.subheader("Tarifs (CSV)")
-        st.caption("Wholesale: `elec_spot_2025.csv` (colonne price en EUR/MWh). Retail TRV: `retail_trv.csv` (base,hp,hc en €/kWh TTC).")
+        st.caption("Wholesale: `elec_spot_2025.csv` (EUR/MWh). Retail TRV: `retail_trv.csv` (base,hp,hc en €/kWh TTC).")
 
         up_wh = st.file_uploader("Wholesale CSV (EUR/MWh)", type=["csv"], key="wh_csv")
         if up_wh:
@@ -297,6 +334,7 @@ with st.expander("Importer des données (EPW / Tarifs)"):
             except Exception as e:
                 st.error(f"Échec génération Tempo: {e}")
 
+# ----------------------------- Simulation -----------------------------
 # Build Audit
 audit = Audit(
     surface_m2=surface,
@@ -366,14 +404,8 @@ def _safe_roi(capex, annual_save):
 save_pac = max(res.get("cost_ref", 0) - res.get("cost_pac", 0), 0)
 save_hyb = max(res.get("cost_ref", 0) - res.get("cost_hybr", 0), 0)
 
-aides_pac = 0
-aides_hyb = 0
-if "PAC" in ("PAC",) or ("Les deux" in ("Les deux",) and False):
-    pass  # placeholder
-if apply_aides_to in ("PAC", "Les deux"):
-    aides_pac = (0 if sans_aides else (mpr + cee))
-if apply_aides_to in ("Hybride", "Les deux"):
-    aides_hyb = (0 if sans_aides else (mpr + cee))
+aides_pac = (0 if sans_aides else (mpr + cee)) if apply_aides_to in ("PAC", "Les deux") else 0
+aides_hyb = (0 if sans_aides else (mpr + cee)) if apply_aides_to in ("Hybride", "Les deux") else 0
 
 roi_pac_avant = _safe_roi(capex_pac, save_pac)
 roi_hyb_avant = _safe_roi(capex_hybr, save_hyb)
@@ -438,7 +470,7 @@ st.download_button(
     mime="application/json",
 )
 
-# Logging
+# Logging (best-effort)
 try:
     log_run(audit, sim_kwargs, res)
 except Exception:
